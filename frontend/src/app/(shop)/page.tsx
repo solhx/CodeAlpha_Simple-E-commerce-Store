@@ -145,8 +145,8 @@ export default function HomePage() {
                 <Image
                   src="/images/hero-image.png"
                   alt="Shopping"
-                  width={600}
-                  height={500}
+                  width={1000}
+                  height={1000}
                   className="relative rounded-2xl"
                   priority
                 />

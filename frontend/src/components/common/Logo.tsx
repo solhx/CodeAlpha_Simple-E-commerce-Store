@@ -50,7 +50,7 @@ export default function Logo({
           variant === 'light' ? 'text-white' : 'text-gray-900 dark:text-white'
         )}
       >
-        Shop<span className="text-primary-600">Hub</span>
+        Go<span className="text-primary-600">Buy</span>
       </span>
     </div>
   );

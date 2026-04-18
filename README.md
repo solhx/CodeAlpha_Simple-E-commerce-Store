@@ -4,11 +4,11 @@
 ## 85. `README.md` (Root)
 
 ```markdown
-# 🛍️ ShopHub - Full-Stack E-commerce Platform
+# 🛍️ GoBuy - Full-Stack E-commerce Platform
 
 A modern, production-ready e-commerce platform built with Next.js 14, Express.js, and MongoDB.
 
-![ShopHub](https://via.placeholder.com/800x400?text=ShopHub+E-commerce)
+![GoBuy](https://via.placeholder.com/800x400?text=GoBuy+E-commerce)
 
 ## ✨ Features
 
@@ -50,5 +50,5 @@ A modern, production-ready e-commerce platform built with Next.js 14, Express.js
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/shophub.git
-cd shophub
+git clone https://github.com/yourusername/gobuy.git
+cd gobuy

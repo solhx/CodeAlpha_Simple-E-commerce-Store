@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
 import Sidebar from '@/components/layout/Sidebar';
 import { Spinner } from '@/components/ui/Spinner';
-import { Menu, Bell, Search, User, LogOut } from 'lucide-react';
+import { Menu, Bell, Search, LogOut } from 'lucide-react';
 
 export default function AdminLayout({
   children,
@@ -41,21 +41,31 @@ export default function AdminLayout({
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 dark:bg-gray-900">
-      {/* Sidebar */}
+    <div className="min-h-screen bg-gray-100 dark:bg-gray-900 flex">
+      {/* Sidebar - Fixed position with proper z-index */}
       <Sidebar
         isCollapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
+        mobileOpen={mobileMenuOpen}
+        onMobileClose={() => setMobileMenuOpen(false)}
       />
 
-      {/* Main Content */}
+      {/* Mobile overlay */}
+      {mobileMenuOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-30 lg:hidden"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
+
+      {/* Main Content - Properly offset from sidebar */}
       <div
-        className={`transition-all duration-300 ${
+        className={`flex-1 flex flex-col min-h-screen transition-all duration-300 ${
           sidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64'
         }`}
       >
-        {/* Top Navbar */}
-        <header className="sticky top-0 z-30 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+        {/* Top Navbar - Sticky within main content */}
+        <header className="sticky top-0 z-20 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
           <div className="flex items-center justify-between h-16 px-4 lg:px-6">
             {/* Left Side */}
             <div className="flex items-center gap-4">
@@ -108,8 +118,8 @@ export default function AdminLayout({
           </div>
         </header>
 
-        {/* Page Content */}
-        <main className="p-4 lg:p-6">{children}</main>
+        {/* Page Content - Takes remaining height, scrollable */}
+        <main className="flex-1 p-4 lg:p-6 overflow-auto">{children}</main>
       </div>
     </div>
   );

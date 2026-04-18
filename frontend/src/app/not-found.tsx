@@ -1,9 +1,44 @@
+'use client';
+
 import React from 'react';
 import Link from 'next/link';
+import { useRouter, usePathname } from 'next/navigation';
 import { Home, Search, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
+import { useAuthStore } from '@/store/authStore';
 
 export default function NotFound() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const { isAuthenticated, user } = useAuthStore();
+
+  const handleGoBack = () => {
+    // Check if we have history to go back to
+    if (typeof window !== 'undefined' && window.history.length > 2) {
+      router.back();
+    } else {
+      // Determine where to redirect based on context
+      if (pathname?.startsWith('/admin')) {
+        // If in admin section and user is admin, go to admin dashboard
+        if (isAuthenticated && user?.role === 'admin') {
+          router.push('/admin/dashboard');
+        } else {
+          router.push('/');
+        }
+      } else {
+        router.push('/');
+      }
+    }
+  };
+
+  // Determine the appropriate "home" link based on context
+  const getHomeLink = () => {
+    if (pathname?.startsWith('/admin') && isAuthenticated && user?.role === 'admin') {
+      return '/admin/dashboard';
+    }
+    return '/';
+  };
+
   return (
     <div className="min-h-[60vh] flex flex-col items-center justify-center px-4">
       <div className="text-center max-w-md">
@@ -27,24 +62,26 @@ export default function NotFound() {
         </p>
 
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
-          <Link href="/">
+          <Link href={getHomeLink()}>
             <Button variant="primary" size="lg">
               <Home className="w-4 h-4 mr-2" />
-              Back to Home
+              {pathname?.startsWith('/admin') ? 'Back to Dashboard' : 'Back to Home'}
             </Button>
           </Link>
           
-          <Link href="/products">
-            <Button variant="outline" size="lg">
-              <Search className="w-4 h-4 mr-2" />
-              Browse Products
-            </Button>
-          </Link>
+          {!pathname?.startsWith('/admin') && (
+            <Link href="/products">
+              <Button variant="outline" size="lg">
+                <Search className="w-4 h-4 mr-2" />
+                Browse Products
+              </Button>
+            </Link>
+          )}
         </div>
 
         <div className="mt-8">
           <button
-            onClick={() => window.history.back()}
+            onClick={handleGoBack}
             className="text-primary-600 hover:text-primary-700 font-medium inline-flex items-center"
           >
             <ArrowLeft className="w-4 h-4 mr-1" />

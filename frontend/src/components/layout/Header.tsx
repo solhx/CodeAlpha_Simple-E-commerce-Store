@@ -13,7 +13,6 @@ import {
   X,
   ChevronDown,
   LogOut,
-  Settings,
   Package,
   Sun,
   Moon,
@@ -21,18 +20,21 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { useCartStore } from '@/store/cartStore';
+import { productsApi } from '@/lib/api';  // ← ADD THIS IMPORT
 import Logo from '@/components/common/Logo';
 import SearchBar from '@/components/common/SearchBar';
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/utils';
 
-const categories = [
+// Default categories (fallback)
+const defaultCategories = [
   { name: 'Electronics', slug: 'electronics' },
   { name: 'Clothing', slug: 'clothing' },
-  { name: 'Home & Garden', slug: 'home' },
+  { name: 'Home', slug: 'home' },
   { name: 'Books', slug: 'books' },
   { name: 'Sports', slug: 'sports' },
   { name: 'Beauty', slug: 'beauty' },
+  { name: 'Toys', slug: 'toys' },
 ];
 
 export default function Header() {
@@ -41,6 +43,7 @@ export default function Header() {
   const { user, isAuthenticated, logout } = useAuthStore();
   const { cart, fetchCart } = useCartStore();
   
+  const [dynamicCategories, setDynamicCategories] = useState(defaultCategories);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -55,6 +58,33 @@ export default function Header() {
       fetchCart();
     }
   }, [isAuthenticated, fetchCart]);
+
+  // Fetch categories from API
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const response = await productsApi.getCategories();
+        const cats = response.data?.categories || response.data || [];
+        
+        if (Array.isArray(cats) && cats.length > 0) {
+          const formatted = cats.map((cat: any) => ({
+            name: typeof cat === 'string' 
+              ? cat.charAt(0).toUpperCase() + cat.slice(1).replace(/-/g, ' ')
+              : cat.name?.charAt(0).toUpperCase() + cat.name?.slice(1),
+            slug: typeof cat === 'string' 
+              ? cat.toLowerCase() 
+              : cat.slug || cat.name?.toLowerCase(),
+          }));
+          setDynamicCategories(formatted);
+        }
+      } catch (error) {
+        console.error('Failed to fetch categories:', error);
+        // Keep using default categories on error
+      }
+    };
+    
+    fetchCategories();
+  }, []);
 
   // Handle scroll effect
   useEffect(() => {
@@ -130,6 +160,7 @@ export default function Header() {
           <button
             onClick={() => setIsMobileMenuOpen(true)}
             className="lg:hidden p-2 -ml-2"
+            aria-label="Open menu"
           >
             <Menu className="w-6 h-6" />
           </button>
@@ -150,6 +181,7 @@ export default function Header() {
             <button
               onClick={() => setIsSearchOpen(!isSearchOpen)}
               className="lg:hidden p-2"
+              aria-label="Search"
             >
               <Search className="w-5 h-5" />
             </button>
@@ -158,6 +190,7 @@ export default function Header() {
             <button
               onClick={toggleDarkMode}
               className="hidden lg:flex p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
+              aria-label="Toggle dark mode"
             >
               {isDarkMode ? (
                 <Sun className="w-5 h-5" />
@@ -171,6 +204,7 @@ export default function Header() {
               <Link
                 href="/wishlist"
                 className="hidden lg:flex p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
+                aria-label="Wishlist"
               >
                 <Heart className="w-5 h-5" />
               </Link>
@@ -180,6 +214,7 @@ export default function Header() {
             <Link
               href="/cart"
               className="relative p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
+              aria-label="Cart"
             >
               <ShoppingCart className="w-5 h-5" />
               {cartItemCount > 0 && (
@@ -195,9 +230,10 @@ export default function Header() {
                 <button
                   onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
                   className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
+                  aria-label="User menu"
                 >
                   <div className="w-8 h-8 bg-primary-600 text-white rounded-full flex items-center justify-center text-sm font-medium">
-                    {user?.name?.charAt(0).toUpperCase()}
+                    {user?.name?.charAt(0).toUpperCase() || 'U'}
                   </div>
                   <ChevronDown className="w-4 h-4 hidden lg:block" />
                 </button>
@@ -299,7 +335,7 @@ export default function Header() {
           )}
         </AnimatePresence>
 
-        {/* Desktop Navigation */}
+        {/* Desktop Navigation - USE dynamicCategories HERE */}
         <nav className="hidden lg:flex items-center gap-8 py-3 border-t border-gray-100 dark:border-gray-800">
           <Link
             href="/products"
@@ -313,7 +349,8 @@ export default function Header() {
             All Products
           </Link>
           
-          {categories.map((category) => (
+          {/* ← CHANGED: Using dynamicCategories instead of categories */}
+          {dynamicCategories.map((category) => (
             <Link
               key={category.slug}
               href={`/products?category=${category.slug}`}
@@ -350,7 +387,7 @@ export default function Header() {
             >
               <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
                 <Logo />
-                <button onClick={() => setIsMobileMenuOpen(false)}>
+                <button onClick={() => setIsMobileMenuOpen(false)} aria-label="Close menu">
                   <X className="w-6 h-6" />
                 </button>
               </div>
@@ -359,7 +396,7 @@ export default function Header() {
                 <div className="p-4 border-b border-gray-200 dark:border-gray-700">
                   <div className="flex items-center gap-3">
                     <div className="w-12 h-12 bg-primary-600 text-white rounded-full flex items-center justify-center text-lg font-medium">
-                      {user?.name?.charAt(0).toUpperCase()}
+                      {user?.name?.charAt(0).toUpperCase() || 'U'}
                     </div>
                     <div>
                       <p className="font-medium text-gray-900 dark:text-white">
@@ -388,16 +425,17 @@ export default function Header() {
                   <Link
                     href="/products"
                     onClick={() => setIsMobileMenuOpen(false)}
-                    className="block px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
+                    className="block px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-900 dark:text-white"
                   >
                     All Products
                   </Link>
-                  {categories.map((category) => (
+                  {/* ← CHANGED: Using dynamicCategories instead of categories */}
+                  {dynamicCategories.map((category) => (
                     <Link
                       key={category.slug}
                       href={`/products?category=${category.slug}`}
                       onClick={() => setIsMobileMenuOpen(false)}
-                      className="block px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
+                      className="block px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-900 dark:text-white"
                     >
                       {category.name}
                     </Link>
@@ -414,7 +452,7 @@ export default function Header() {
                         <Link
                           href="/admin/dashboard"
                           onClick={() => setIsMobileMenuOpen(false)}
-                          className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
+                          className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-900 dark:text-white"
                         >
                           <LayoutDashboard className="w-5 h-5" />
                           Admin Dashboard
@@ -423,7 +461,7 @@ export default function Header() {
                       <Link
                         href="/profile"
                         onClick={() => setIsMobileMenuOpen(false)}
-                        className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
+                        className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-900 dark:text-white"
                       >
                         <User className="w-5 h-5" />
                         My Profile
@@ -431,7 +469,7 @@ export default function Header() {
                       <Link
                         href="/orders"
                         onClick={() => setIsMobileMenuOpen(false)}
-                        className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
+                        className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-900 dark:text-white"
                       >
                         <Package className="w-5 h-5" />
                         My Orders
@@ -439,7 +477,7 @@ export default function Header() {
                       <Link
                         href="/wishlist"
                         onClick={() => setIsMobileMenuOpen(false)}
-                        className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
+                        className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-900 dark:text-white"
                       >
                         <Heart className="w-5 h-5" />
                         Wishlist
@@ -462,7 +500,7 @@ export default function Header() {
               <div className="p-4 border-t border-gray-200 dark:border-gray-700">
                 <button
                   onClick={toggleDarkMode}
-                  className="flex items-center justify-between w-full px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
+                  className="flex items-center justify-between w-full px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-900 dark:text-white"
                 >
                   <span>Dark Mode</span>
                   {isDarkMode ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}

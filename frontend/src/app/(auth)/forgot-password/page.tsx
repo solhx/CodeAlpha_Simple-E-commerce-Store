@@ -10,6 +10,7 @@ import { forgotPasswordSchema } from '@/lib/validations';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import Logo from '@/components/common/Logo';
+import { authApi } from '@/lib/api';
 import toast from 'react-hot-toast';
 
 interface ForgotPasswordForm {
@@ -32,12 +33,11 @@ export default function ForgotPasswordPage() {
   const onSubmit = async (data: ForgotPasswordForm) => {
     setIsLoading(true);
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      await authApi.forgotPassword(data.email);
       setIsSubmitted(true);
       toast.success('Reset link sent to your email!');
-    } catch (error) {
-      toast.error('Failed to send reset link');
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to send reset link');
     } finally {
       setIsLoading(false);
     }
