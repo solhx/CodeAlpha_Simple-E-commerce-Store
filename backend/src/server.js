@@ -1,9 +1,14 @@
+// THIS MUST BE THE VERY FIRST LINE - loads env vars synchronously
+import 'dotenv/config';
+
 import express from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
-import dotenv from 'dotenv';
+
+// Import passport AFTER dotenv/config is loaded
+import passport from './config/passport.js';
 
 // Import Routes
 import authRoutes from './routes/auth.routes.js';
@@ -13,14 +18,11 @@ import orderRoutes from './routes/order.routes.js';
 import userRoutes from './routes/user.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 
-dotenv.config();
-
 const app = express();
 
-// ============ CORS Configuration - مهم جداً ============
+// ============ CORS Configuration ============
 const corsOptions = {
   origin: function (origin, callback) {
-    // السماح بالطلبات بدون origin (مثل Postman أو mobile apps)
     const allowedOrigins = [
       'http://localhost:3000',
       'http://127.0.0.1:3000',
@@ -40,10 +42,7 @@ const corsOptions = {
   exposedHeaders: ['set-cookie']
 };
 
-// تطبيق CORS قبل أي middleware آخر
 app.use(cors(corsOptions));
-
-// Handle preflight requests
 app.options('*', cors(corsOptions));
 
 // ============ Other Middleware ============
@@ -53,6 +52,9 @@ app.use(helmet({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
+
+// Initialize Passport
+app.use(passport.initialize());
 
 // Static files for uploads
 app.use('/uploads', express.static('uploads'));
@@ -86,7 +88,6 @@ app.use((req, res, next) => {
 app.use((err, req, res, next) => {
   console.error('Error:', err.message);
   
-  // CORS Error
   if (err.message === 'Not allowed by CORS') {
     return res.status(403).json({
       success: false,
@@ -102,7 +103,7 @@ app.use((err, req, res, next) => {
 });
 
 // ============ Database Connection & Server Start ============
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 4000;
 
 const startServer = async () => {
   try {

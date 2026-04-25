@@ -20,14 +20,21 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { useCartStore } from '@/store/cartStore';
-import { productsApi } from '@/lib/api';  // ← ADD THIS IMPORT
+import { productsApi } from '@/lib/api';
 import Logo from '@/components/common/Logo';
 import SearchBar from '@/components/common/SearchBar';
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/utils';
 
+// Category interface for type safety
+interface Category {
+  name: string;
+  slug: string;
+  count?: number;
+}
+
 // Default categories (fallback)
-const defaultCategories = [
+const defaultCategories: Category[] = [
   { name: 'Electronics', slug: 'electronics' },
   { name: 'Clothing', slug: 'clothing' },
   { name: 'Home', slug: 'home' },
@@ -37,13 +44,70 @@ const defaultCategories = [
   { name: 'Toys', slug: 'toys' },
 ];
 
+// Helper function to format category name
+const formatCategoryName = (category: string): string => {
+  if (!category || typeof category !== 'string') return '';
+  return category
+    .charAt(0).toUpperCase() + 
+    category.slice(1).toLowerCase().replace(/-/g, ' ');
+};
+
+// Helper function to parse categories from API response
+const parseCategories = (data: any): Category[] => {
+  // Handle different API response formats
+  const categories = data?.categories || data || [];
+  
+  if (!Array.isArray(categories)) {
+    console.warn('Categories data is not an array:', categories);
+    return defaultCategories;
+  }
+
+  const parsed: Category[] = [];
+
+  for (const cat of categories) {
+    let category: Category | null = null;
+
+    // Handle format: { _id: 'electronics', count: 5 }
+    if (cat && typeof cat === 'object' && cat._id) {
+      category = {
+        name: formatCategoryName(cat._id),
+        slug: cat._id.toLowerCase(),
+        count: cat.count || 0,
+      };
+    }
+    // Handle format: { name: 'Electronics', slug: 'electronics' }
+    else if (cat && typeof cat === 'object' && cat.name) {
+      category = {
+        name: formatCategoryName(cat.name),
+        slug: cat.slug || cat.name.toLowerCase(),
+        count: cat.count || 0,
+      };
+    }
+    // Handle format: 'electronics' (plain string)
+    else if (typeof cat === 'string') {
+      category = {
+        name: formatCategoryName(cat),
+        slug: cat.toLowerCase(),
+        count: 0,
+      };
+    }
+
+    // Only add valid categories
+    if (category && category.name && category.name.trim() !== '') {
+      parsed.push(category);
+    }
+  }
+
+  return parsed.length > 0 ? parsed : defaultCategories;
+};
+
 export default function Header() {
   const pathname = usePathname();
   const router = useRouter();
   const { user, isAuthenticated, logout } = useAuthStore();
   const { cart, fetchCart } = useCartStore();
   
-  const [dynamicCategories, setDynamicCategories] = useState(defaultCategories);
+  const [categories, setCategories] = useState<Category[]>(defaultCategories);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -64,22 +128,12 @@ export default function Header() {
     const fetchCategories = async () => {
       try {
         const response = await productsApi.getCategories();
-        const cats = response.data?.categories || response.data || [];
-        
-        if (Array.isArray(cats) && cats.length > 0) {
-          const formatted = cats.map((cat: any) => ({
-            name: typeof cat === 'string' 
-              ? cat.charAt(0).toUpperCase() + cat.slice(1).replace(/-/g, ' ')
-              : cat.name?.charAt(0).toUpperCase() + cat.name?.slice(1),
-            slug: typeof cat === 'string' 
-              ? cat.toLowerCase() 
-              : cat.slug || cat.name?.toLowerCase(),
-          }));
-          setDynamicCategories(formatted);
-        }
+        const parsedCategories = parseCategories(response.data);
+        setCategories(parsedCategories);
       } catch (error) {
         console.error('Failed to fetch categories:', error);
         // Keep using default categories on error
+        setCategories(defaultCategories);
       }
     };
     
@@ -335,7 +389,7 @@ export default function Header() {
           )}
         </AnimatePresence>
 
-        {/* Desktop Navigation - USE dynamicCategories HERE */}
+        {/* Desktop Navigation */}
         <nav className="hidden lg:flex items-center gap-8 py-3 border-t border-gray-100 dark:border-gray-800">
           <Link
             href="/products"
@@ -349,8 +403,8 @@ export default function Header() {
             All Products
           </Link>
           
-          {/* ← CHANGED: Using dynamicCategories instead of categories */}
-          {dynamicCategories.map((category) => (
+          {/* Categories from API */}
+          {categories.map((category) => (
             <Link
               key={category.slug}
               href={`/products?category=${category.slug}`}
@@ -429,8 +483,7 @@ export default function Header() {
                   >
                     All Products
                   </Link>
-                  {/* ← CHANGED: Using dynamicCategories instead of categories */}
-                  {dynamicCategories.map((category) => (
+                  {categories.map((category) => (
                     <Link
                       key={category.slug}
                       href={`/products?category=${category.slug}`}

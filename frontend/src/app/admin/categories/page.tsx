@@ -12,7 +12,8 @@ import {
   Tags,
   Search,
   Package,
-  AlertCircle
+  AlertCircle,
+  RefreshCw
 } from 'lucide-react';
 import { productsApi } from '@/lib/api';
 import toast from 'react-hot-toast';
@@ -26,17 +27,35 @@ interface Category {
   isActive: boolean;
 }
 
-// Default categories based on your Product model enum
-const defaultCategories: Category[] = [
-  { _id: '1', name: 'Electronics', slug: 'electronics', description: 'Gadgets, devices, and tech products', productCount: 0, isActive: true },
-  { _id: '2', name: 'Clothing', slug: 'clothing', description: 'Fashion and apparel', productCount: 0, isActive: true },
-  { _id: '3', name: 'Home', slug: 'home', description: 'Home and garden products', productCount: 0, isActive: true },
-  { _id: '4', name: 'Books', slug: 'books', description: 'Books and publications', productCount: 0, isActive: true },
-  { _id: '5', name: 'Sports', slug: 'sports', description: 'Sports and fitness equipment', productCount: 0, isActive: true },
-  { _id: '6', name: 'Beauty', slug: 'beauty', description: 'Beauty and personal care', productCount: 0, isActive: true },
-  { _id: '7', name: 'Toys', slug: 'toys', description: 'Toys and games', productCount: 0, isActive: true },
-  { _id: '8', name: 'Other', slug: 'other', description: 'Other products', productCount: 0, isActive: true },
+// Available categories based on Product model enum
+const AVAILABLE_CATEGORIES = [
+  'electronics',
+  'clothing', 
+  'home',
+  'books',
+  'sports',
+  'beauty',
+  'toys',
+  'other'
 ];
+
+// Category metadata for better display
+const categoryMetadata: Record<string, { description: string; icon?: string }> = {
+  electronics: { description: 'Gadgets, devices, and tech products' },
+  clothing: { description: 'Fashion and apparel' },
+  home: { description: 'Home and garden products' },
+  books: { description: 'Books and publications' },
+  sports: { description: 'Sports and fitness equipment' },
+  beauty: { description: 'Beauty and personal care' },
+  toys: { description: 'Toys and games' },
+  other: { description: 'Other products' },
+};
+
+// Helper to format category name
+const formatCategoryName = (slug: string): string => {
+  if (!slug) return '';
+  return slug.charAt(0).toUpperCase() + slug.slice(1).replace(/-/g, ' ');
+};
 
 export default function CategoriesPage() {
   const [categories, setCategories] = useState<Category[]>([]);
@@ -57,53 +76,10 @@ export default function CategoriesPage() {
   const fetchCategories = async () => {
     setIsLoading(true);
     try {
-      // Try to get categories from API
+      // Get categories from API
       const response = await productsApi.getCategories();
       const categoryData = response.data?.categories || response.data || [];
       
-      if (Array.isArray(categoryData) && categoryData.length > 0) {
-        // Get product counts for each category
-        const productsResponse = await productsApi.getAll({ limit: 1000 });
-        const products = productsResponse.data?.products || [];
-        
-        // Count products per category
-        const categoryCounts: Record<string, number> = {};
-        products.forEach((product: any) => {
-          const cat = product.category?.toLowerCase() || 'other';
-          categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
-        });
-
-        // Transform categories
-        const transformedCategories = categoryData.map((cat: any, index: number) => {
-          const categoryName = typeof cat === 'string' ? cat : cat.name || 'Unknown';
-          const categorySlug = categoryName.toLowerCase().replace(/\s+/g, '-');
-          
-          return {
-            _id: typeof cat === 'object' && cat._id ? cat._id : `cat-${index}`,
-            name: categoryName.charAt(0).toUpperCase() + categoryName.slice(1),
-            slug: categorySlug,
-            description: typeof cat === 'object' ? cat.description || '' : '',
-            productCount: categoryCounts[categorySlug] || categoryCounts[categoryName.toLowerCase()] || 0,
-            isActive: typeof cat === 'object' ? cat.isActive !== false : true
-          };
-        });
-        
-        setCategories(transformedCategories);
-      } else {
-        // Use default categories and get product counts
-        await loadDefaultCategoriesWithCounts();
-      }
-    } catch (error) {
-      console.error('Failed to fetch categories:', error);
-      // Use default categories on error
-      await loadDefaultCategoriesWithCounts();
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const loadDefaultCategoriesWithCounts = async () => {
-    try {
       // Get all products to count per category
       const productsResponse = await productsApi.getAll({ limit: 1000 });
       const products = productsResponse.data?.products || [];
@@ -115,16 +91,75 @@ export default function CategoriesPage() {
         categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
       });
 
-      // Update default categories with real counts
-      const categoriesWithCounts = defaultCategories.map(cat => ({
-        ...cat,
-        productCount: categoryCounts[cat.slug] || 0
-      }));
+      // Build categories list
+      let transformedCategories: Category[] = [];
 
-      setCategories(categoriesWithCounts);
+      if (Array.isArray(categoryData) && categoryData.length > 0) {
+        // Parse API response - handle { _id: 'electronics', count: 5 } format
+        transformedCategories = categoryData.map((cat: any, index: number) => {
+          let categorySlug: string;
+          let count: number;
+
+          // Handle different API response formats
+          if (typeof cat === 'string') {
+            categorySlug = cat.toLowerCase();
+            count = categoryCounts[categorySlug] || 0;
+          } else if (cat._id) {
+            // Format: { _id: 'electronics', count: 5 }
+            categorySlug = cat._id.toLowerCase();
+            count = cat.count || categoryCounts[categorySlug] || 0;
+          } else if (cat.name) {
+            categorySlug = (cat.slug || cat.name).toLowerCase();
+            count = cat.count || categoryCounts[categorySlug] || 0;
+          } else {
+            return null;
+          }
+
+          const metadata = categoryMetadata[categorySlug] || { description: '' };
+
+          return {
+            _id: `cat-${categorySlug}-${index}`,
+            name: formatCategoryName(categorySlug),
+            slug: categorySlug,
+            description: metadata.description,
+            productCount: count,
+            isActive: true
+          };
+        }).filter(Boolean) as Category[];
+      }
+
+      // If no categories from API, create from available list
+      if (transformedCategories.length === 0) {
+        transformedCategories = AVAILABLE_CATEGORIES.map((slug, index) => ({
+          _id: `cat-${slug}-${index}`,
+          name: formatCategoryName(slug),
+          slug: slug,
+          description: categoryMetadata[slug]?.description || '',
+          productCount: categoryCounts[slug] || 0,
+          isActive: true
+        }));
+      }
+
+      // Sort by product count (highest first)
+      transformedCategories.sort((a, b) => b.productCount - a.productCount);
+
+      setCategories(transformedCategories);
     } catch (error) {
-      console.error('Failed to load product counts:', error);
+      console.error('Failed to fetch categories:', error);
+      toast.error('Failed to load categories');
+      
+      // Fallback to default categories
+      const defaultCategories = AVAILABLE_CATEGORIES.map((slug, index) => ({
+        _id: `cat-${slug}-${index}`,
+        name: formatCategoryName(slug),
+        slug: slug,
+        description: categoryMetadata[slug]?.description || '',
+        productCount: 0,
+        isActive: true
+      }));
       setCategories(defaultCategories);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -159,15 +194,27 @@ export default function CategoriesPage() {
     setIsSaving(true);
     
     try {
+      const newSlug = formData.name.toLowerCase().replace(/\s+/g, '-');
+      
+      // Check if category already exists (for new categories)
+      if (!editingCategory) {
+        const exists = categories.some(c => c.slug === newSlug);
+        if (exists) {
+          toast.error('Category already exists');
+          setIsSaving(false);
+          return;
+        }
+      }
+
       if (editingCategory) {
-        // Update category locally (or call API if you have endpoint)
+        // Update category locally
         setCategories(prev => 
           prev.map(c => 
             c._id === editingCategory._id 
               ? { 
                   ...c, 
                   name: formData.name,
-                  slug: formData.name.toLowerCase().replace(/\s+/g, '-'),
+                  slug: newSlug,
                   description: formData.description 
                 }
               : c
@@ -177,9 +224,9 @@ export default function CategoriesPage() {
       } else {
         // Create new category locally
         const newCategory: Category = {
-          _id: `cat-${Date.now()}`,
+          _id: `cat-${newSlug}-${Date.now()}`,
           name: formData.name,
-          slug: formData.name.toLowerCase().replace(/\s+/g, '-'),
+          slug: newSlug,
           description: formData.description,
           productCount: 0,
           isActive: true
@@ -199,7 +246,7 @@ export default function CategoriesPage() {
     // Check if category has products
     const category = categories.find(c => c._id === categoryId);
     if (category && category.productCount > 0) {
-      toast.error(`Cannot delete "${categoryName}" - it has ${category.productCount} products`);
+      toast.error(`Cannot delete "${categoryName}" - it has ${category.productCount} products. Move or delete the products first.`);
       return;
     }
 
@@ -213,14 +260,16 @@ export default function CategoriesPage() {
     }
   };
 
-  // Safe filter with null checks
+  // Filter categories safely
   const filteredCategories = categories.filter(cat => {
     if (!cat || !cat.name) return false;
-    return cat.name.toLowerCase().includes(searchQuery.toLowerCase());
+    return cat.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+           cat.slug.toLowerCase().includes(searchQuery.toLowerCase());
   });
 
-  // Calculate total products
+  // Calculate totals
   const totalProducts = categories.reduce((sum, cat) => sum + (cat.productCount || 0), 0);
+  const activeCategories = categories.filter(c => c.productCount > 0).length;
 
   if (isLoading) {
     return (
@@ -242,14 +291,20 @@ export default function CategoriesPage() {
             Categories
           </h1>
           <p className="text-gray-600 dark:text-gray-400">
-            Manage product categories • {categories.length} categories • {totalProducts} products
+            Manage product categories • {categories.length} categories • {totalProducts} products • {activeCategories} with products
           </p>
         </div>
         
-        <Button onClick={() => handleOpenModal()}>
-          <Plus className="w-4 h-4 mr-2" />
-          Add Category
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={fetchCategories}>
+            <RefreshCw className="w-4 h-4 mr-2" />
+            Refresh
+          </Button>
+          <Button onClick={() => handleOpenModal()}>
+            <Plus className="w-4 h-4 mr-2" />
+            Add Category
+          </Button>
+        </div>
       </div>
 
       {/* Search */}
@@ -271,8 +326,9 @@ export default function CategoriesPage() {
         <AlertCircle className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
         <div>
           <p className="text-sm text-blue-800 dark:text-blue-200">
-            Categories are defined in your product schema. To add new categories permanently, 
-            update the category enum in your Product model.
+            <strong>Note:</strong> Categories are defined in your Product model schema. 
+            The available categories are: {AVAILABLE_CATEGORIES.join(', ')}. 
+            To add new categories permanently, update the category enum in your <code className="bg-blue-100 dark:bg-blue-800 px-1 rounded">Product.model.js</code> file.
           </p>
         </div>
       </div>
@@ -284,8 +340,16 @@ export default function CategoriesPage() {
             <Card key={category._id} className="p-6 hover:shadow-lg transition-shadow">
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="p-3 bg-primary-100 dark:bg-primary-900/30 rounded-lg">
-                    <Tags className="w-6 h-6 text-primary-600" />
+                  <div className={`p-3 rounded-lg ${
+                    category.productCount > 0 
+                      ? 'bg-primary-100 dark:bg-primary-900/30' 
+                      : 'bg-gray-100 dark:bg-gray-800'
+                  }`}>
+                    <Tags className={`w-6 h-6 ${
+                      category.productCount > 0 
+                        ? 'text-primary-600' 
+                        : 'text-gray-400'
+                    }`} />
                   </div>
                   <div>
                     <h3 className="font-semibold text-gray-900 dark:text-white">
@@ -310,7 +374,7 @@ export default function CategoriesPage() {
                     size="sm"
                     onClick={() => handleDelete(category._id, category.name)}
                     className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
-                    title="Delete category"
+                    title={category.productCount > 0 ? `Cannot delete - has ${category.productCount} products` : 'Delete category'}
                     disabled={category.productCount > 0}
                   >
                     <Trash2 className="w-4 h-4" />
@@ -327,20 +391,19 @@ export default function CategoriesPage() {
               <div className="mt-4 flex items-center justify-between">
                 <div className="flex items-center gap-2 text-sm text-gray-500">
                   <Package className="w-4 h-4" />
-                  <span>{category.productCount} products</span>
+                  <span>{category.productCount} {category.productCount === 1 ? 'product' : 'products'}</span>
                 </div>
                 <span className={`px-2 py-1 text-xs rounded-full ${
-                  category.isActive 
+                  category.productCount > 0 
                     ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
                     : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400'
                 }`}>
-                  {category.isActive ? 'Active' : 'Inactive'}
+                  {category.productCount > 0 ? 'Active' : 'Empty'}
                 </span>
               </div>
             </Card>
           ))
         ) : (
-          // Empty state
           <div className="col-span-full text-center py-12">
             <Tags className="w-12 h-12 text-gray-400 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
@@ -348,7 +411,7 @@ export default function CategoriesPage() {
             </h3>
             <p className="text-gray-600 dark:text-gray-400 mb-4">
               {searchQuery 
-                ? 'Try a different search term' 
+                ? `No categories match "${searchQuery}"` 
                 : 'Get started by creating your first category'}
             </p>
             {!searchQuery && (
@@ -383,7 +446,9 @@ export default function CategoriesPage() {
                 className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent"
               />
               <p className="mt-1 text-xs text-gray-500">
-                Slug will be auto-generated: /{formData.name.toLowerCase().replace(/\s+/g, '-') || 'category-name'}
+                Slug: <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">
+                  {formData.name.toLowerCase().replace(/\s+/g, '-') || 'category-name'}
+                </code>
               </p>
             </div>
             
@@ -399,6 +464,15 @@ export default function CategoriesPage() {
                 className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none"
               />
             </div>
+
+            {!editingCategory && (
+              <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                  <strong>Note:</strong> New categories added here are temporary. To make them permanent, 
+                  add them to the category enum in your Product model.
+                </p>
+              </div>
+            )}
             
             <div className="flex justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
               <Button

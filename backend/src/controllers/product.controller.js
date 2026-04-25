@@ -122,17 +122,22 @@ export const getFeaturedProducts = async (req, res, next) => {
 // @route   GET /api/products/categories/list
 export const getCategories = async (req, res, next) => {
   try {
-    const categories = await Product.distinct('category');
-    
     const categoriesWithCount = await Product.aggregate([
       { $match: { isActive: true } },
       { $group: { _id: '$category', count: { $sum: 1 } } },
       { $sort: { count: -1 } }
     ]);
 
+    // Transform to a cleaner format
+    const categories = categoriesWithCount.map(cat => ({
+      name: cat._id.charAt(0).toUpperCase() + cat._id.slice(1),
+      slug: cat._id.toLowerCase(),
+      count: cat.count
+    }));
+
     res.status(200).json({
       success: true,
-      categories: categoriesWithCount
+      categories
     });
   } catch (error) {
     next(error);

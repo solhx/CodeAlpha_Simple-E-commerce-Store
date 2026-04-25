@@ -20,7 +20,6 @@ const getCookieOptions = () => ({
 
 // Create email transporter
 const createTransporter = () => {
-  // Check if SMTP credentials are configured
   if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
     console.warn('SMTP credentials not configured. Email sending will fail.');
   }
@@ -28,7 +27,7 @@ const createTransporter = () => {
   return nodemailer.createTransport({
     host: process.env.SMTP_HOST || 'smtp.gmail.com',
     port: parseInt(process.env.SMTP_PORT || '587'),
-    secure: process.env.SMTP_PORT === '465', // true for 465, false for other ports
+    secure: process.env.SMTP_PORT === '465',
     auth: {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS,
@@ -48,6 +47,7 @@ const formatUserResponse = (user) => ({
   wishlist: user.wishlist,
   isActive: user.isActive,
   isEmailVerified: user.isEmailVerified,
+  authProvider: user.authProvider,
   createdAt: user.createdAt
 });
 
@@ -58,7 +58,6 @@ export const register = async (req, res, next) => {
   try {
     const { name, email, password, phone } = req.body;
 
-    // Validate required fields
     if (!name || !email || !password) {
       return res.status(400).json({
         success: false,
@@ -66,7 +65,6 @@ export const register = async (req, res, next) => {
       });
     }
 
-    // Validate email format
     const emailRegex = /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/;
     if (!emailRegex.test(email)) {
       return res.status(400).json({
@@ -75,7 +73,6 @@ export const register = async (req, res, next) => {
       });
     }
 
-    // Validate password length
     if (password.length < 6) {
       return res.status(400).json({
         success: false,
@@ -83,7 +80,6 @@ export const register = async (req, res, next) => {
       });
     }
 
-    // Check if user exists
     const existingUser = await User.findOne({ email: email.toLowerCase() });
     if (existingUser) {
       return res.status(400).json({
@@ -92,7 +88,6 @@ export const register = async (req, res, next) => {
       });
     }
 
-    // Create user
     const user = await User.create({
       name,
       email: email.toLowerCase(),
@@ -100,10 +95,7 @@ export const register = async (req, res, next) => {
       phone
     });
 
-    // Generate token
     const token = generateToken(user._id);
-
-    // Set cookie
     res.cookie('token', token, getCookieOptions());
 
     res.status(201).json({
@@ -112,7 +104,6 @@ export const register = async (req, res, next) => {
       user: formatUserResponse(user)
     });
   } catch (error) {
-    // Handle duplicate key error
     if (error.code === 11000) {
       return res.status(400).json({
         success: false,
@@ -130,7 +121,6 @@ export const login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
 
-    // Validate input
     if (!email || !password) {
       return res.status(400).json({
         success: false,
@@ -138,7 +128,6 @@ export const login = async (req, res, next) => {
       });
     }
 
-    // Find user with password
     const user = await User.findOne({ email: email.toLowerCase() }).select('+password');
 
     if (!user) {
@@ -148,7 +137,6 @@ export const login = async (req, res, next) => {
       });
     }
 
-    // Check if account is active
     if (!user.isActive) {
       return res.status(401).json({
         success: false,
@@ -156,7 +144,6 @@ export const login = async (req, res, next) => {
       });
     }
 
-    // Check password
     const isMatch = await user.comparePassword(password);
 
     if (!isMatch) {
@@ -166,14 +153,10 @@ export const login = async (req, res, next) => {
       });
     }
 
-    // Update last login
     user.lastLogin = new Date();
     await user.save({ validateBeforeSave: false });
 
-    // Generate token
     const token = generateToken(user._id);
-
-    // Set cookie
     res.cookie('token', token, getCookieOptions());
 
     res.status(200).json({
@@ -231,7 +214,6 @@ export const updateProfile = async (req, res, next) => {
   try {
     const { name, phone, address } = req.body;
 
-    // Build update object
     const updateFields = {};
     if (name) updateFields.name = name;
     if (phone !== undefined) updateFields.phone = phone;
@@ -266,7 +248,6 @@ export const updatePassword = async (req, res, next) => {
   try {
     const { currentPassword, newPassword } = req.body;
 
-    // Validate input
     if (!currentPassword || !newPassword) {
       return res.status(400).json({
         success: false,
@@ -290,7 +271,6 @@ export const updatePassword = async (req, res, next) => {
       });
     }
 
-    // Check current password
     const isMatch = await user.comparePassword(currentPassword);
     if (!isMatch) {
       return res.status(401).json({
@@ -299,11 +279,9 @@ export const updatePassword = async (req, res, next) => {
       });
     }
 
-    // Update password
     user.password = newPassword;
     await user.save();
 
-    // Generate new token
     const token = generateToken(user._id);
     res.cookie('token', token, getCookieOptions());
 
@@ -331,34 +309,28 @@ export const forgotPassword = async (req, res, next) => {
       });
     }
 
-    // Find user and select the reset token fields
     const user = await User.findOne({ email: email.toLowerCase() })
       .select('+resetPasswordToken +resetPasswordExpire');
 
     if (!user) {
-      // Don't reveal if email exists or not for security
       return res.status(200).json({
         success: true,
         message: 'If an account with that email exists, a password reset link has been sent.'
       });
     }
 
-    // Generate reset token
     const resetToken = crypto.randomBytes(32).toString('hex');
     const resetTokenHash = crypto
       .createHash('sha256')
       .update(resetToken)
       .digest('hex');
 
-    // Save reset token to user (expires in 1 hour)
     user.resetPasswordToken = resetTokenHash;
-    user.resetPasswordExpire = Date.now() + 60 * 60 * 1000; // 1 hour
+    user.resetPasswordExpire = Date.now() + 60 * 60 * 1000;
     await user.save({ validateBeforeSave: false });
 
-    // Create reset URL
     const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password/${resetToken}`;
 
-    // Email content
     const htmlMessage = `
       <!DOCTYPE html>
       <html>
@@ -371,7 +343,7 @@ export const forgotPassword = async (req, res, next) => {
         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width: 600px; margin: 0 auto; background-color: #ffffff;">
           <tr>
             <td style="padding: 40px 30px; text-align: center; background-color: #2563eb;">
-              <h1 style="color: #ffffff; margin: 0; font-size: 28px;">ShopHub</h1>
+              <h1 style="color: #ffffff; margin: 0; font-size: 28px;">GoBuy</h1>
             </td>
           </tr>
           <tr>
@@ -379,7 +351,7 @@ export const forgotPassword = async (req, res, next) => {
               <h2 style="color: #333333; margin: 0 0 20px;">Password Reset Request</h2>
               <p style="color: #666666; font-size: 16px; line-height: 1.5;">Hi ${user.name},</p>
               <p style="color: #666666; font-size: 16px; line-height: 1.5;">
-                You requested a password reset for your ShopHub account. Click the button below to reset your password:
+                You requested a password reset for your GoBuy account. Click the button below to reset your password:
               </p>
               <div style="text-align: center; margin: 30px 0;">
                 <a href="${resetUrl}" style="display: inline-block; padding: 14px 30px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
@@ -397,14 +369,14 @@ export const forgotPassword = async (req, res, next) => {
                 <strong>This link will expire in 1 hour.</strong>
               </p>
               <p style="color: #999999; font-size: 14px; line-height: 1.5;">
-                If you didn't request this password reset, please ignore this email or contact support if you have concerns.
+                If you didn't request this password reset, please ignore this email.
               </p>
             </td>
           </tr>
           <tr>
             <td style="padding: 20px 30px; text-align: center; background-color: #f8f9fa;">
               <p style="color: #999999; font-size: 12px; margin: 0;">
-                © ${new Date().getFullYear()} ShopHub. All rights reserved.
+                © ${new Date().getFullYear()} GoBuy. All rights reserved.
               </p>
             </td>
           </tr>
@@ -418,7 +390,7 @@ export const forgotPassword = async (req, res, next) => {
       
       Hi ${user.name},
       
-      You requested a password reset for your ShopHub account.
+      You requested a password reset for your GoBuy account.
       
       Click the link below to reset your password:
       ${resetUrl}
@@ -428,16 +400,16 @@ export const forgotPassword = async (req, res, next) => {
       If you didn't request this, please ignore this email.
       
       Thanks,
-      The ShopHub Team
+      The GoBuy Team
     `;
 
     try {
       const transporter = createTransporter();
       
       await transporter.sendMail({
-        from: `"ShopHub" <${process.env.SMTP_USER || 'noreply@shophub.com'}>`,
+        from: `"GoBuy" <${process.env.SMTP_USER || 'noreply@gobuy.com'}>`,
         to: user.email,
-        subject: 'Password Reset Request - ShopHub',
+        subject: 'Password Reset Request - GoBuy',
         text: textMessage,
         html: htmlMessage,
       });
@@ -449,7 +421,6 @@ export const forgotPassword = async (req, res, next) => {
     } catch (emailError) {
       console.error('Email send error:', emailError);
       
-      // Reset the token if email fails
       user.resetPasswordToken = undefined;
       user.resetPasswordExpire = undefined;
       await user.save({ validateBeforeSave: false });
@@ -472,7 +443,6 @@ export const resetPassword = async (req, res, next) => {
     const { token } = req.params;
     const { password } = req.body;
 
-    // Validate token
     if (!token) {
       return res.status(400).json({
         success: false,
@@ -480,7 +450,6 @@ export const resetPassword = async (req, res, next) => {
       });
     }
 
-    // Validate password
     if (!password) {
       return res.status(400).json({
         success: false,
@@ -495,13 +464,11 @@ export const resetPassword = async (req, res, next) => {
       });
     }
 
-    // Hash the token from URL
     const resetTokenHash = crypto
       .createHash('sha256')
       .update(token)
       .digest('hex');
 
-    // Find user with valid token - IMPORTANT: select the fields!
     const user = await User.findOne({
       resetPasswordToken: resetTokenHash,
       resetPasswordExpire: { $gt: Date.now() }
@@ -514,13 +481,11 @@ export const resetPassword = async (req, res, next) => {
       });
     }
 
-    // Set new password
     user.password = password;
     user.resetPasswordToken = undefined;
     user.resetPasswordExpire = undefined;
     await user.save();
 
-    // Generate new token and log user in
     const jwtToken = generateToken(user._id);
     res.cookie('token', jwtToken, getCookieOptions());
 
@@ -549,13 +514,11 @@ export const verifyEmail = async (req, res, next) => {
       });
     }
 
-    // Hash the token from URL
     const verificationTokenHash = crypto
       .createHash('sha256')
       .update(token)
       .digest('hex');
 
-    // Find user with valid token
     const user = await User.findOne({
       emailVerificationToken: verificationTokenHash,
       emailVerificationExpire: { $gt: Date.now() }
@@ -568,7 +531,6 @@ export const verifyEmail = async (req, res, next) => {
       });
     }
 
-    // Mark email as verified
     user.isEmailVerified = true;
     user.emailVerificationToken = undefined;
     user.emailVerificationExpire = undefined;
@@ -605,29 +567,25 @@ export const resendVerificationEmail = async (req, res, next) => {
       });
     }
 
-    // Generate verification token
     const verificationToken = crypto.randomBytes(32).toString('hex');
     const verificationTokenHash = crypto
       .createHash('sha256')
       .update(verificationToken)
       .digest('hex');
 
-    // Save token
     user.emailVerificationToken = verificationTokenHash;
-    user.emailVerificationExpire = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+    user.emailVerificationExpire = Date.now() + 24 * 60 * 60 * 1000;
     await user.save({ validateBeforeSave: false });
 
-    // Create verification URL
     const verificationUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/verify-email/${verificationToken}`;
 
-    // Send email
     try {
       const transporter = createTransporter();
       
       await transporter.sendMail({
-        from: `"ShopHub" <${process.env.SMTP_USER || 'noreply@shophub.com'}>`,
+        from: `"GoBuy" <${process.env.SMTP_USER || 'noreply@gobuy.com'}>`,
         to: user.email,
-        subject: 'Verify your email - ShopHub',
+        subject: 'Verify your email - GoBuy',
         html: `
           <h1>Email Verification</h1>
           <p>Hi ${user.name},</p>
@@ -708,7 +666,6 @@ export const deleteAccount = async (req, res, next) => {
       });
     }
 
-    // Verify password
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
       return res.status(401).json({
@@ -717,10 +674,8 @@ export const deleteAccount = async (req, res, next) => {
       });
     }
 
-    // Delete user
     await User.findByIdAndDelete(req.user._id);
 
-    // Clear cookie
     res.cookie('token', '', {
       httpOnly: true,
       expires: new Date(0)
@@ -732,5 +687,104 @@ export const deleteAccount = async (req, res, next) => {
     });
   } catch (error) {
     next(error);
+  }
+};
+
+// ============================================
+// OAUTH CONTROLLERS
+// ============================================
+
+// @desc    Google OAuth - Callback
+// @route   GET /api/auth/google/callback
+// @access  Public
+export const googleCallback = async (req, res, next) => {
+  try {
+    const user = req.user;
+    
+    if (!user) {
+      return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/login?error=auth_failed`);
+    }
+
+    // Generate JWT token
+    const token = generateToken(user._id);
+
+    // Set cookie
+    res.cookie('token', token, getCookieOptions());
+
+    // Redirect to frontend with token
+    res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/auth/callback?token=${token}`);
+  } catch (error) {
+    console.error('Google callback error:', error);
+    res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/login?error=auth_failed`);
+  }
+};
+
+// @desc    GitHub OAuth - Callback
+// @route   GET /api/auth/github/callback
+// @access  Public
+export const githubCallback = async (req, res, next) => {
+  try {
+    const user = req.user;
+    
+    if (!user) {
+      return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/login?error=auth_failed`);
+    }
+
+    // Generate JWT token
+    const token = generateToken(user._id);
+
+    // Set cookie
+    res.cookie('token', token, getCookieOptions());
+
+    // Redirect to frontend with token
+    res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/auth/callback?token=${token}`);
+  } catch (error) {
+    console.error('GitHub callback error:', error);
+    res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/login?error=auth_failed`);
+  }
+};
+
+// @desc    OAuth token exchange (for frontend callback)
+// @route   POST /api/auth/oauth/token
+// @access  Public
+export const exchangeOAuthToken = async (req, res, next) => {
+  try {
+    const { token } = req.body;
+
+    if (!token) {
+      return res.status(400).json({
+        success: false,
+        message: 'Token is required'
+      });
+    }
+
+    // Verify the token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await User.findById(decoded.id);
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid token'
+      });
+    }
+
+    if (!user.isActive) {
+      return res.status(401).json({
+        success: false,
+        message: 'Account is deactivated'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      token,
+      user: formatUserResponse(user)
+    });
+  } catch (error) {
+    return res.status(401).json({
+      success: false,
+      message: 'Invalid or expired token'
+    });
   }
 };
